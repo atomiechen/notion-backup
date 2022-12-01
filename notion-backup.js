@@ -69,6 +69,8 @@ async function exportFromNotion (format, timeout=600000) {
     console.warn(`Enqueued task ${taskId}`);
     let failCount = 0
       , exportURL
+      , export_num = 0
+      , export_stuck = 0
     ;
     while (true) {
       if (Date.now() - startTime > timeout) {
@@ -97,7 +99,18 @@ async function exportFromNotion (format, timeout=600000) {
         console.warn(`No task status, waiting. Task was:\n${JSON.stringify(task, null, 2)}`);
         continue;
       }
-      if (task.state === 'in_progress') console.warn(`Pages exported: ${task.status.pagesExported}`);
+      if (task.state === 'in_progress') {
+        if (export_num === task.status.pagesExported) {
+          export_stuck++;
+        } else {
+          export_stuck = 0;
+        }
+        if (export_stuck === 5) {
+          throw new Error(`Stuck ${export_stuck} times`);
+        }
+        export_num = task.status.pagesExported;
+        console.warn(`Pages exported: ${export_num}`);
+      }
       if (task.state === 'failure') {
         failCount++;
         console.warn(`Task error: ${task.error}`);
