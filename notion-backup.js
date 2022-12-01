@@ -26,6 +26,17 @@ See https://medium.com/@arturburtsev/automated-notion-backups-f6af4edc298d for
 notes on how to get that information.`);
 }
 
+let timeout = 10 * 60 * 1000;  // 10min for each task
+if (process.argv.length >= 3) {  // read timeout (in seconds) from command-line argument
+  word = process.argv[2]
+  if (!isNaN(word)) {  // exclude cases like 3abcd
+    let n = parseInt(word)
+    if (!isNaN(n)) {  // exclude NaN
+      timeout = n * 1000
+    }
+  }
+}
+
 async function post (endpoint, data) {
   return client.post(endpoint, data);
 }
@@ -41,6 +52,7 @@ async function exportFromNotion (format, timeout=600000) {
   // try {
     let startTime = Date.now();
     console.log("Start exporting as " + format)
+    console.log("Set timeout: " + timeout/1000 + "s")
     let { data: { taskId } } = await post('enqueueTask', {
       task: {
         eventName: 'exportSpace',
@@ -120,7 +132,6 @@ async function run () {
     , htmlFile = join(cwd, 'html.zip')
   ;
 
-  timeout = 10 * 60000; // 10min for each task
   await exportFromNotion('markdown', timeout).then(() => {
     // rmdirSync(mdDir, { recursive: true });
     rmSync(mdDir, { recursive: true, force: true });
