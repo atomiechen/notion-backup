@@ -48,7 +48,7 @@ async function sleep (seconds) {
 }
 
 // formats: markdown, html
-async function exportFromNotion (format, timeout=600000) {
+async function exportFromNotion (format, timeout) {
   // try {
     let startTime = Date.now();
     console.log("Start exporting as " + format)
@@ -118,6 +118,7 @@ async function exportFromNotion (format, timeout=600000) {
       }
       if (task.state === 'success') {
         exportURL = task.status.exportURL;
+        console.log("Task succeeds!");
         break;
       }
     }
@@ -128,7 +129,10 @@ async function exportFromNotion (format, timeout=600000) {
     });
     let stream = res.data.pipe(createWriteStream(join(process.cwd(), `${format}.zip`)));
     await new Promise((resolve, reject) => {
-      stream.on('close', resolve);
+      stream.on('close', () => {
+        console.log(`Downloaded: ${format}.zip`);
+        resolve();
+      });
       stream.on('error', reject);
     });
   // }
@@ -137,28 +141,23 @@ async function exportFromNotion (format, timeout=600000) {
   // }
 }
 
-async function run () {
+async function backup(format, timeout) {
   let cwd = process.cwd()
-    , mdDir = join(cwd, 'markdown')
-    , mdFile = join(cwd, 'markdown.zip')
-    , htmlDir = join(cwd, 'html')
-    , htmlFile = join(cwd, 'html.zip')
+    , pathDir = join(cwd, format)
+    , pathFile = join(cwd, `${format}.zip`)
   ;
-
-  await exportFromNotion('markdown', timeout).then(() => {
-    // rmdirSync(mdDir, { recursive: true });
-    rmSync(mdDir, { recursive: true, force: true });
-    mkdirSync(mdDir, { recursive: true });
-    return extract(mdFile, { dir: mdDir });
+  return exportFromNotion(format, timeout).then(() => {
+    // rmdirSync(pathDir, { recursive: true });
+    rmSync(pathDir, { recursive: true, force: true });
+    mkdirSync(pathDir, { recursive: true });
+    console.log(`Emptied: ${pathDir}`)
+    return extract(pathFile, { dir: pathDir }).then(() => console.log(`Extracted ${pathFile} to ${pathDir}`));
   }).catch(err => console.log(err));
+}
 
-  await exportFromNotion('html', timeout).then(() => {
-    // rmdirSync(htmlDir, { recursive: true });
-    rmSync(htmlDir, { recursive: true, force: true });
-    mkdirSync(htmlDir, { recursive: true });
-    return extract(htmlFile, { dir: htmlDir });
-  }).catch(err => console.log(err));
-
+async function run () {
+  await backup('markdown', timeout);
+  await backup('html', timeout);
   console.log("done.")
 }
 
