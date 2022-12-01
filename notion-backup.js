@@ -4,7 +4,7 @@
 let axios = require('axios')
   , extract = require('extract-zip')
   , { retry } = require('async')
-  , { createWriteStream, mkdirSync, rmdirSync } = require('fs')
+  , { createWriteStream, mkdirSync, rmdirSync, rmSync } = require('fs')
   , { join } = require('path')
   , notionAPI = 'https://www.notion.so/api/v3'
   , { NOTION_TOKEN, NOTION_SPACE_ID } = process.env
@@ -37,8 +37,10 @@ async function sleep (seconds) {
 }
 
 // formats: markdown, html
-async function exportFromNotion (format) {
-  try {
+async function exportFromNotion (format, timeout=600000) {
+  // try {
+    let startTime = Date.now();
+    console.log("Start exporting as " + format)
     let { data: { taskId } } = await post('enqueueTask', {
       task: {
         eventName: 'exportSpace',
@@ -57,7 +59,15 @@ async function exportFromNotion (format) {
       , exportURL
     ;
     while (true) {
-      if (failCount >= 5) break;
+      if (Date.now() - startTime > timeout) {
+        throw new Error("timeout reached: " + timeout/1000 + "s");
+        // console.log("timeout reached: " + timeout/1000 + "s");
+        // break;
+      }
+      if (failCount >= 5) {
+        throw new Error("fail count >= 5");
+        // break;
+      }
       await sleep(10);
       let { data: { results: tasks } } = await retry(
         { times: 3, interval: 2000 },
@@ -96,10 +106,10 @@ async function exportFromNotion (format) {
       stream.on('close', resolve);
       stream.on('error', reject);
     });
-  }
-  catch (err) {
-    die(err);
-  }
+  // }
+  // catch (err) {
+  //   die(err);
+  // }
 }
 
 async function run () {
@@ -109,14 +119,23 @@ async function run () {
     , htmlDir = join(cwd, 'html')
     , htmlFile = join(cwd, 'html.zip')
   ;
-  await exportFromNotion('markdown');
-  rmdirSync(mdDir, { recursive: true });
-  mkdirSync(mdDir, { recursive: true });
-  await extract(mdFile, { dir: mdDir });
-  await exportFromNotion('html');
-  rmdirSync(htmlDir, { recursive: true });
-  mkdirSync(htmlDir, { recursive: true });
-  await extract(htmlFile, { dir: htmlDir });
+
+  timeout = 10 * 60000; // 10min for each task
+  await exportFromNotion('markdown', timeout).then(() => {
+    // rmdirSync(mdDir, { recursive: true });
+    rmSync(mdDir, { recursive: true, force: true });
+    mkdirSync(mdDir, { recursive: true });
+    return extract(mdFile, { dir: mdDir });
+  }).catch(err => console.log(err));
+
+  await exportFromNotion('html', timeout).then(() => {
+    // rmdirSync(htmlDir, { recursive: true });
+    rmSync(htmlDir, { recursive: true, force: true });
+    mkdirSync(htmlDir, { recursive: true });
+    return extract(htmlFile, { dir: htmlDir });
+  }).catch(err => console.log(err));
+
+  console.log("done.")
 }
 
 run();
