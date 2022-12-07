@@ -52,7 +52,9 @@ async function exportFromNotion (format, timeout) {
   // try {
     let startTime = Date.now();
     console.log("Start exporting as " + format)
-    console.log("Set timeout: " + timeout/1000 + "s")
+    if (timeout > 0) {
+      console.log("Set timeout: " + timeout/1000 + "s")
+    }
     let { data: { taskId } } = await post('enqueueTask', {
       task: {
         eventName: 'exportSpace',
