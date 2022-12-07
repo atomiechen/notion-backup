@@ -26,7 +26,7 @@ See https://medium.com/@arturburtsev/automated-notion-backups-f6af4edc298d for
 notes on how to get that information.`);
 }
 
-let timeout = 10 * 60 * 1000;  // 10min for each task
+let timeout = -1;  // default: no timeout
 if (process.argv.length >= 3) {  // read timeout (in seconds) from command-line argument
   word = process.argv[2]
   if (!isNaN(word)) {  // exclude cases like 3abcd
@@ -73,10 +73,8 @@ async function exportFromNotion (format, timeout) {
       , export_stuck = 0
     ;
     while (true) {
-      if (Date.now() - startTime > timeout) {
+      if (timeout > 0 && Date.now() - startTime > timeout) {
         throw new Error("timeout reached: " + timeout/1000 + "s");
-        // console.log("timeout reached: " + timeout/1000 + "s");
-        // break;
       }
       if (failCount >= 5) {
         throw new Error("fail count >= 5");
@@ -152,13 +150,23 @@ async function backup(format, timeout) {
     mkdirSync(pathDir, { recursive: true });
     console.log(`Emptied: ${pathDir}`)
     return extract(pathFile, { dir: pathDir }).then(() => console.log(`Extracted ${pathFile} to ${pathDir}`));
-  }).catch(err => console.log(err));
+  });
 }
 
 async function run () {
-  await backup('markdown', timeout);
-  await backup('html', timeout);
-  console.log("done.")
+  let errorCount = 0;
+  await backup('markdown', timeout).catch(err => {
+    console.log(err);
+    errorCount++;
+  });
+  await backup('html', timeout).catch(err => {
+    console.log(err);
+    errorCount++;
+  });
+  console.log("done.");
+  if (errorCount === 2) {  // all backup tasks failed
+    die("All backup tasks failed.");
+  }
 }
 
 run();
