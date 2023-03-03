@@ -61,6 +61,9 @@ async function exportFromNotion (format, timeout, waitcount) {
     if (timeout > 0) {
       console.log("Set timeout: " + timeout/1000 + "s")
     }
+    if (waitcount > 0) {
+      console.log("Set stuck wait count: " + waitcount)
+    }
     let { data: { taskId } } = await post('enqueueTask', {
       task: {
         eventName: 'exportSpace',
@@ -84,8 +87,8 @@ async function exportFromNotion (format, timeout, waitcount) {
       if (timeout > 0 && Date.now() - startTime > timeout) {
         throw new Error("timeout reached: " + timeout/1000 + "s");
       }
-      if (failCount >= waitcount) {
-        throw new Error("fail count >= " + waitcount);
+      if (failCount >= 5) {
+        throw new Error("fail count >= 5");
         // break;
       }
       await sleep(10);
@@ -111,7 +114,7 @@ async function exportFromNotion (format, timeout, waitcount) {
         } else {
           export_stuck = 0;
         }
-        if (export_stuck === 5) {
+        if (export_stuck === waitcount) {
           throw new Error(`Stuck ${export_stuck} times`);
         }
         export_num = task.status.pagesExported;
