@@ -4,8 +4,8 @@
 let axios = require('axios')
   , extract = require('extract-zip')
   , { retry } = require('async')
-  , { createWriteStream, mkdirSync, rmdirSync, rmSync } = require('fs')
-  , { join } = require('path')
+  , { createWriteStream, mkdirSync, rmdirSync, rmSync, readdirSync, statSync, unlinkSync } = require('fs')
+  , { join, extname, parse } = require('path')
   , notionAPI = 'https://www.notion.so/api/v3'
   , { NOTION_TOKEN, NOTION_SPACE_ID } = process.env
   , client = axios.create({
@@ -150,6 +150,35 @@ async function exportFromNotion (format, timeout, waitcount) {
   // }
 }
 
+async function extractZipRecursively(zipFilePath, extractToDir) {
+  return extract(zipFilePath, { dir: extractToDir }).then(() => {
+    console.log(`Extracted ${zipFilePath} to ${extractToDir}`);
+    // delete this zip file
+    unlinkSync(zipFilePath);
+
+    const contents = readdirSync(extractToDir);
+    const subDirectories = contents.filter((item) => {
+      return statSync(join(extractToDir, item)).isDirectory();
+    });
+    const zipFiles = contents.filter((item) => {
+      return extname(item).toLowerCase() === '.zip';
+    });
+    if (zipFiles.length === 0 && subDirectories.length === 1) {
+      // If there are no more zip files in the directory and there is only one subdirectory,
+      // return the path to the subdirectory as the final extracted path
+      return join(extractToDir, subDirectories[0]);
+    } else if (zipFiles.length === 1 && subDirectories.length === 0) {
+      // If there is only one zip file in the directory and there are no subdirectories,
+      // recursively extract the zip file
+      const nextZipFilePath = join(extractToDir, zipFiles[0]);
+      const nextExtractToDir = join(extractToDir, parse(nextZipFilePath).name);
+      return extractZipRecursively(nextZipFilePath, nextExtractToDir);
+    } else {
+      throw new Error(`Unexpected file structure in ${extractToDir}`);
+    }
+  });
+}
+
 async function backup(format, timeout, waitcount) {
   let cwd = process.cwd()
     , pathDir = join(cwd, format)
@@ -159,8 +188,10 @@ async function backup(format, timeout, waitcount) {
     // rmdirSync(pathDir, { recursive: true });
     rmSync(pathDir, { recursive: true, force: true });
     mkdirSync(pathDir, { recursive: true });
-    console.log(`Emptied: ${pathDir}`)
-    return extract(pathFile, { dir: pathDir }).then(() => console.log(`Extracted ${pathFile} to ${pathDir}`));
+    console.log(`Emptied: ${pathDir}`);
+    return extractZipRecursively(pathFile, pathDir).then((finalExtractedPath) => {
+      console.log(`Final extracted path: ${finalExtractedPath}`);
+    });
   });
 }
 
