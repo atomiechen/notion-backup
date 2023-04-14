@@ -4,14 +4,15 @@
 let axios = require('axios')
   , extract = require('extract-zip')
   , { retry } = require('async')
-  , { createWriteStream, mkdirSync, rmdirSync, rmSync, readdirSync, statSync, unlinkSync } = require('fs')
-  , { join, extname, parse } = require('path')
+  , { createWriteStream } = require('fs')
+  , { mkdir, rm, readdir } = require('fs/promises')
+  , { join } = require('path')
   , notionAPI = 'https://www.notion.so/api/v3'
-  , { NOTION_TOKEN, NOTION_SPACE_ID } = process.env
+  , { NOTION_TOKEN, NOTION_FILE_TOKEN, NOTION_SPACE_ID } = process.env
   , client = axios.create({
       baseURL: notionAPI,
       headers: {
-        Cookie: `token_v2=${NOTION_TOKEN}`
+        Cookie: `token_v2=${NOTION_TOKEN}; file_token=${NOTION_FILE_TOKEN}`
       },
     })
   , die = (str) => {
@@ -20,10 +21,10 @@ let axios = require('axios')
     }
 ;
 
-if (!NOTION_TOKEN || !NOTION_SPACE_ID) {
-  die(`Need to have both NOTION_TOKEN and NOTION_SPACE_ID defined in the environment.
-See https://medium.com/@arturburtsev/automated-notion-backups-f6af4edc298d for
-notes on how to get that information.`);
+if (!NOTION_TOKEN || !NOTION_FILE_TOKEN || !NOTION_SPACE_ID) {
+  die(`Need to have NOTION_TOKEN, NOTION_FILE_TOKEN and NOTION_SPACE_ID defined in the environment.
+See https://github.com/darobin/notion-backup/blob/main/README.md for
+a manual on how to get that information.`);
 }
 
 let timeout = -1;  // in seconds, default: no timeout
@@ -184,30 +185,34 @@ async function backup(format, timeout, waitcount) {
     , pathDir = join(cwd, format)
     , pathFile = join(cwd, `${format}.zip`)
   ;
-  return exportFromNotion(format, timeout, waitcount).then(() => {
-    // rmdirSync(pathDir, { recursive: true });
-    rmSync(pathDir, { recursive: true, force: true });
-    mkdirSync(pathDir, { recursive: true });
-    console.log(`Emptied: ${pathDir}`);
-    return extractZipRecursively(pathFile, pathDir).then((finalExtractedPath) => {
-      console.log(`Final extracted path: ${finalExtractedPath}`);
-    });
-  });
+  await exportFromNotion(format, timeout, waitcount);
+  await rm(pathDir, { recursive: true, force: true });
+  await mkdir(pathDir, { recursive: true });
+  console.log(`Emptied: ${pathDir}`);
+  await extract(pathFile, { dir: pathDir });
+  await extractInnerZip(pathDir);
 }
 
-async function run () {
+async function run() {
   let errorCount = 0;
   await backup('markdown', timeout, waitcount).catch(err => {
-    console.log(err);
+    console.error(err);
     errorCount++;
   });
   await backup('html', timeout, waitcount).catch(err => {
-    console.log(err);
+    console.error(err);
     errorCount++;
   });
   console.log("done.");
   if (errorCount === 2) {  // all backup tasks failed
     die("All backup tasks failed.");
+  }
+}
+
+async function extractInnerZip (dir) {
+  let files = (await readdir(dir)).filter(fn => /Part-\d+\.zip$/i.test(fn));
+  for (let file of files) {
+    await extract(join(dir, file), { dir });
   }
 }
 
